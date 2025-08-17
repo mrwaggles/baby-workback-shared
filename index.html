@@ -156,67 +156,81 @@
     </div>
   </dialog>
 
-  <!-- Firebase SDKs -->
-  <script type="module">
-    // 1) Paste your Firebase web config below (from Firebase console -> Project settings -> General -> Your apps -> SDK setup and configuration)
-    const firebaseConfig = {
-      apiKey: "AIzaSyB8Swzc6l0lJVMNwHY7YNRLAQWYBoaZiR4",
+  <!-- Put this near the end of <body> or in your JS bundle -->
+<script type="module">
+  // --- Firebase core ---
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+  import {
+    getAuth,
+    GoogleAuthProvider,
+    signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
+    onAuthStateChanged,
+    setPersistence,
+    browserLocalPersistence,
+  } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+  // (Only if you use Firestore; safe to keep if you already do)
+  import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+  // 🔴 REPLACE these values with the *exact* ones from Firebase Console > Project settings > General > Your apps (Web)
+  const firebaseConfig = {
+    apiKey: "AIzaSyB8Swzc6l0lJVMNwHY7YNRLAQWYBoaZiR4",
   authDomain: "baby-workback.firebaseapp.com",
   projectId: "baby-workback",
   storageBucket: "baby-workback.firebasestorage.app",
   messagingSenderId: "350273798587",
   appId: "1:350273798587:web:8122c0faa5da74e5fe849e",
   measurementId: "G-RL5N1FXELT"
-    };
 
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-    import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-    import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+  // --- Init ---
+  const app  = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  setPersistence(auth, browserLocalPersistence); // stay signed in on reload
+  const db   = getFirestore(app);                // if you use Firestore
 
-    // Init
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+  // --- Provider ---
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
 
-    // UI helpers
-    const $ = (id) => document.getElementById(id);
-    const fmtDate = (d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const fmtMonth = (d) => new Date(d).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-    const startOfWeek = (date, weekStartsOn = 1) => {
-      const d = new Date(date); const day = d.getDay();
-      const diff = (day < weekStartsOn ? 7 : 0) + day - weekStartsOn;
-      d.setDate(d.getDate() - diff); d.setHours(0,0,0,0); return d;
-    };
-    const endOfWeek = (date, weekStartsOn = 1) => {
-      const s = startOfWeek(date, weekStartsOn); const e = new Date(s);
-      e.setDate(e.getDate() + 6); e.setHours(23,59,59,999); return e;
-    };
-    const today = () => { const d = new Date(); d.setHours(0,0,0,0); return d; };
-
-    // State
-    let currentUser = null;
-    let tasks = []; // live from Firestore
-    let monthCursor = new Date();
-    let showOnlyCurrentAndNext = true;
-    let assigneeFilter = 'all';
-    let statusFilter = 'all';
-    let editingTaskId = null;
-
-    // Auth UI
-    $('signin').onclick = async () => {
-      const provider = new GoogleAuthProvider();
+  // --- Sign in handler (popup with redirect fallback) ---
+  async function signIn() {
+    try {
       await signInWithPopup(auth, provider);
-    };
-    $('signout').onclick = () => signOut(auth);
+    } catch (err) {
+      // Fallback for popup-blocked / Safari / ITP / iframes
+      if (
+        err?.code === "auth/popup-blocked" ||
+        err?.code === "auth/operation-not-supported-in-this-environment"
+      ) {
+        await signInWithRedirect(auth, provider);
+      } else {
+        console.error("Sign-in error:", err);
+        alert(`Sign-in error: ${err.code || err.message}`);
+      }
+    }
+  }
 
-    onAuthStateChanged(auth, (user) => {
-      currentUser = user;
-      $('user').textContent = user ? `Signed in as ${user.displayName || user.email}` : 'Not signed in';
-      $('signin').classList.toggle('hidden', !!user);
-      $('signout').classList.toggle('hidden', !user);
+  // Expose to your button: <button onclick="signIn()">Sign in with Google</button>
+  window.signIn = signIn;
 
-      if (user) subscribeTasks();
-    });
+  // Handle redirect-complete (no-op if you used popup)
+  getRedirectResult(auth).catch((err) => {
+    console.error("Redirect sign-in error:", err);
+  });
+
+  // Update UI on auth change
+  onAuthStateChanged(auth, (user) => {
+    const authed = !!user;
+    document.body.classList.toggle("authed", authed);
+    const who = document.querySelector("#who");
+    if (who) who.textContent = user?.displayName || user?.email || "";
+    // TODO: here’s where you show/hide your app panes, load/save tasks, etc.
+  });
+
+  // Optional: sign out helper if you have a sign-out button
+  window.signOutNow = () => auth.signOut();
+</script>
 
     // Firestore live subscription
     let unsub = null;
