@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Baby Workback – Shared (Firebase)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { primary: { DEFAULT:'#2563eb' } },
+          borderRadius: { '2xl':'1rem' }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div id="app" class="max-w-5xl mx-auto p-4 md:p-8 space-y-6">
+    <header class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">Baby Workback – Shared</h1>
+        <p class="text-slate-500 mt-1">One list for both of you. Real-time updates using Firebase. Sign in, add/assign/check items, and it syncs for everyone.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="user" class="text-sm text-slate-600"></span>
+        <button id="signin" class="border rounded-2xl px-3 py-2">Sign in with Google</button>
+        <button id="signout" class="hidden border rounded-2xl px-3 py-2">Sign out</button>
+      </div>
+    </header>
+
+    <section class="bg-white border border-slate-200 rounded-2xl shadow-sm">
+      <div class="p-4 md:p-6 space-y-4">
+        <div class="flex items-center justify-between gap-4">
+          <div class="space-y-1">
+            <div id="monthLabel" class="text-xl md:text-2xl"></div>
+            <div class="text-slate-500 text-sm flex items-center gap-3 flex-wrap">
+              <span id="statusLine">0 overdue · Showing current and upcoming weeks</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btnToday" class="border rounded-2xl px-3 py-2">Today</button>
+            <button id="btnPrev" class="border rounded-2xl px-3 py-2">← Prev</button>
+            <button id="btnNext" class="border rounded-2xl px-3 py-2">Next →</button>
+            <button id="btnAdd" class="bg-primary text-white rounded-2xl px-3 py-2">+ Add Task</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-500">Assignee</span>
+            <select id="filterAssignee" class="border rounded-2xl px-3 py-2 w-full">
+              <option value="all">All</option>
+              <option value="Aliki">Aliki</option>
+              <option value="Christian">Christian</option>
+              <option value="Both">Both</option>
+              <option value="unassigned">Unassigned</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-500">Status</span>
+            <select id="filterStatus" class="border rounded-2xl px-3 py-2 w-full">
+              <option value="all">All</option>
+              <option value="open">Open</option>
+              <option value="done">Done</option>
+              <option value="overdue">Overdue</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-500">View</span>
+            <button id="btnToggleView" class="border rounded-2xl px-3 py-2">Show whole month</button>
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <div class="flex items-center justify-between text-sm text-slate-600">
+            <span>Monthly progress</span>
+            <span id="progressPct">0%</span>
+          </div>
+          <div class="w-full h-3 bg-slate-200 rounded-full overflow-hidden">
+            <div id="progressBar" class="h-full bg-primary rounded-full" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="list" class="p-4 md:p-6 space-y-4">
+        <div class="text-slate-500 text-sm">Loading tasks…</div>
+      </div>
+    </section>
+
+    <p class="text-xs text-slate-500 text-center">Changes are saved in Firestore for everyone signed in.</p>
+  </div>
+
+  <!-- Add Task Dialog -->
+  <dialog id="dlgAdd" class="rounded-2xl w-[96vw] max-w-lg">
+    <div class="p-4 md:p-6 space-y-3">
+      <div class="text-lg font-semibold">Add a new task</div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">Title</div>
+        <input id="addTitle" class="border rounded-2xl px-3 py-2 w-full" placeholder="e.g., Book pediatrician meet & greet" />
+      </div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">Due date</div>
+        <input id="addDue" type="date" class="border rounded-2xl px-3 py-2 w-full" />
+      </div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">Assignee</div>
+        <select id="addAssignee" class="border rounded-2xl px-3 py-2 w-full">
+          <option value="unassigned">Unassigned</option>
+          <option value="Aliki">Aliki</option>
+          <option value="Christian">Christian</option>
+          <option value="Both">Both</option>
+        </select>
+      </div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">Notes (optional)</div>
+        <textarea id="addNotes" rows="4" class="border rounded-2xl px-3 py-2 w-full" placeholder="Links, contacts, details..."></textarea>
+      </div>
+      <div class="flex gap-2 justify-end pt-2">
+        <button id="addCancel" class="border rounded-2xl px-3 py-2">Cancel</button>
+        <button id="addSave" class="bg-primary text-white rounded-2xl px-3 py-2">Add task</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Edit Task Dialog -->
+  <dialog id="dlgEdit" class="rounded-2xl w-[96vw] max-w-lg">
+    <div class="p-4 md:p-6 space-y-3">
+      <div class="text-lg font-semibold">Edit task</div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">Title</div>
+        <input id="editTitle" class="border rounded-2xl px-3 py-2 w-full" />
+      </div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">Due date</div>
+        <input id="editDue" type="date" class="border rounded-2xl px-3 py-2 w-full" />
+      </div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">Assignee</div>
+        <select id="editAssignee" class="border rounded-2xl px-3 py-2 w-full">
+          <option value="unassigned">Unassigned</option>
+          <option value="Aliki">Aliki</option>
+          <option value="Christian">Christian</option>
+          <option value="Both">Both</option>
+        </select>
+      </div>
+      <div>
+        <div class="text-xs text-slate-500 mb-1">Notes</div>
+        <textarea id="editNotes" rows="6" class="border rounded-2xl px-3 py-2 w-full"></textarea>
+      </div>
+      <div class="flex gap-2 justify-end pt-2">
+        <button id="editCancel" class="border rounded-2xl px-3 py-2">Cancel</button>
+        <button id="editSave" class="bg-primary text-white rounded-2xl px-3 py-2">Save</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Firebase SDKs -->
+  <script type="module">
+    // 1) Paste your Firebase web config below (from Firebase console -> Project settings -> General -> Your apps -> SDK setup and configuration)
+    const firebaseConfig = {
+      apiKey: "AIzaSyB8Swzc6l0lJVMNwHY7YNRLAQWYBoaZiR4",
+  authDomain: "baby-workback.firebaseapp.com",
+  projectId: "baby-workback",
+  storageBucket: "baby-workback.firebasestorage.app",
+  messagingSenderId: "350273798587",
+  appId: "1:350273798587:web:8122c0faa5da74e5fe849e",
+  measurementId: "G-RL5N1FXELT"
+    };
+
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+    import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+    import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+    // Init
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // UI helpers
+    const $ = (id) => document.getElementById(id);
+    const fmtDate = (d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const fmtMonth = (d) => new Date(d).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    const startOfWeek = (date, weekStartsOn = 1) => {
+      const d = new Date(date); const day = d.getDay();
+      const diff = (day < weekStartsOn ? 7 : 0) + day - weekStartsOn;
+      d.setDate(d.getDate() - diff); d.setHours(0,0,0,0); return d;
+    };
+    const endOfWeek = (date, weekStartsOn = 1) => {
+      const s = startOfWeek(date, weekStartsOn); const e = new Date(s);
+      e.setDate(e.getDate() + 6); e.setHours(23,59,59,999); return e;
+    };
+    const today = () => { const d = new Date(); d.setHours(0,0,0,0); return d; };
+
+    // State
+    let currentUser = null;
+    let tasks = []; // live from Firestore
+    let monthCursor = new Date();
+    let showOnlyCurrentAndNext = true;
+    let assigneeFilter = 'all';
+    let statusFilter = 'all';
+    let editingTaskId = null;
+
+    // Auth UI
+    $('signin').onclick = async () => {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    };
+    $('signout').onclick = () => signOut(auth);
+
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      $('user').textContent = user ? `Signed in as ${user.displayName || user.email}` : 'Not signed in';
+      $('signin').classList.toggle('hidden', !!user);
+      $('signout').classList.toggle('hidden', !user);
+
+      if (user) subscribeTasks();
+    });
+
+    // Firestore live subscription
+    let unsub = null;
+    function subscribeTasks() {
+      if (unsub) unsub();
+      const q = query(collection(db, 'tasks'), orderBy('due', 'asc'));
+      unsub = onSnapshot(q, (snap) => {
+        tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        render();
+      });
+    }
+
+    // UI controls
+    $('btnToday').onclick = () => { monthCursor = new Date(); render(); };
+    $('btnPrev').onclick = () => { const d = new Date(monthCursor); d.setMonth(d.getMonth()-1); monthCursor = d; render(); };
+    $('btnNext').onclick = () => { const d = new Date(monthCursor); d.setMonth(d.getMonth()+1); monthCursor = d; render(); };
+    $('btnToggleView').onclick = () => { showOnlyCurrentAndNext = !showOnlyCurrentAndNext; render(); };
+
+    $('filterAssignee').onchange = (e) => { assigneeFilter = e.target.value; render(); };
+    $('filterStatus').onchange = (e) => { statusFilter = e.target.value; render(); };
+
+    $('btnAdd').onclick = () => {
+      if (!currentUser) { alert('Please sign in first'); return; }
+      const dlg = $('dlgAdd');
+      $('addTitle').value = '';
+      $('addDue').value = new Date().toISOString().slice(0,10);
+      $('addAssignee').value = 'unassigned';
+      $('addNotes').value = '';
+      dlg.showModal();
+    };
+    $('addCancel').onclick = () => $('dlgAdd').close();
+    $('addSave').onclick = async () => {
+      const title = $('addTitle').value.trim();
+      const dueStr = $('addDue').value;
+      const who = $('addAssignee').value;
+      const notes = $('addNotes').value.trim();
+      if (!title || !dueStr) return alert('Please enter a title and due date');
+      const due = new Date(dueStr);
+      await addDoc(collection(db, 'tasks'), {
+        title,
+        due: due, // Firestore will store as Timestamp
+        assignee: (who === 'unassigned' ? '' : who),
+        notes,
+        done: false,
+        remindedAt: null,
+        createdAt: serverTimestamp(),
+        createdBy: currentUser.uid
+      });
+      $('dlgAdd').close();
+    };
+
+    $('editCancel').onclick = () => $('dlgEdit').close();
+    $('editSave').onclick = async () => {
+      if (!editingTaskId) return;
+      const title = $('editTitle').value.trim();
+      const dueStr = $('editDue').value;
+      const assignee = $('editAssignee').value;
+      const notes = $('editNotes').value;
+      const due = new Date(dueStr);
+      await updateDoc(doc(db, 'tasks', editingTaskId), {
+        title: title || '(untitled)',
+        due,
+        assignee: (assignee === 'unassigned' ? '' : assignee),
+        notes
+      });
+      $('dlgEdit').close();
+      editingTaskId = null;
+    };
+
+    // Render
+    function render() {
+      // Header
+      $('monthLabel').textContent = fmtMonth(new Date(monthCursor));
+
+      const monthStart = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
+      const monthEnd = new Date(monthCursor.getFullYear(), monthCursor.getMonth()+1, 0, 23,59,59,999);
+
+      // Filter to current month
+      const monthTasks = tasks.filter(t => {
+        const d = t.due?.toDate ? t.due.toDate() : new Date(t.due);
+        return d >= monthStart && d <= monthEnd;
+      }).sort((a,b) => (a.due?.toDate?.() || new Date(a.due)) - (b.due?.toDate?.() || new Date(b.due)));
+
+      // Count overdue & progress
+      const now = today();
+      const overdueCount = monthTasks.filter(t => !t.done && (t.due?.toDate?.() || new Date(t.due)) < now).length;
+      const doneCount = monthTasks.filter(t => t.done).length;
+      const total = monthTasks.length || 1;
+      const pct = Math.round((doneCount / total) * 100);
+      $('statusLine').textContent = `${overdueCount} overdue · ${showOnlyCurrentAndNext ? 'Showing current and upcoming weeks' : 'Showing all weeks in month'}`;
+      $('progressPct').textContent = pct + '%';
+      $('progressBar').style.width = pct + '%';
+
+      // Filters (assignee/status)
+      let visible = monthTasks.filter(t => {
+        if (assigneeFilter !== 'all') {
+          const val = (assigneeFilter === 'unassigned') ? '' : assigneeFilter;
+          if (t.assignee !== val) return false;
+        }
+        if (statusFilter !== 'all') {
+          const isOverdue = !t.done && ((t.due?.toDate?.() || new Date(t.due)) < now);
+          if (statusFilter === 'open' && t.done) return false;
+          if (statusFilter === 'done' && !t.done) return false;
+          if (statusFilter === 'overdue' && !isOverdue) return false;
+        }
+        return true;
+      });
+
+      // Group by week
+      const groups = new Map();
+      for (const t of visible) {
+        const d = t.due?.toDate?.() || new Date(t.due);
+        const ws = startOfWeek(d);
+        const we = endOfWeek(ws);
+        const label = `${fmtDate(ws)} – ${fmtDate(we)}`;
+        if (showOnlyCurrentAndNext && we < startOfWeek(now)) continue;
+        if (!groups.has(label)) groups.set(label, []);
+        groups.get(label).push(t);
+      }
+
+      // Build DOM
+      const list = $('list');
+      list.innerHTML = '';
+      if (groups.size === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'text-slate-500 text-sm';
+        empty.textContent = 'No tasks found for this view.';
+        list.appendChild(empty);
+        return;
+      }
+
+      for (const [label, items] of Array.from(groups.entries()).sort((a,b) => new Date(a[0]) - new Date(b[0]))) {
+        const weekLabel = document.createElement('div');
+        weekLabel.className = 'sticky top-0 bg-white/70 backdrop-blur py-1 font-semibold text-slate-700';
+        weekLabel.textContent = 'Week ' + label;
+        list.appendChild(weekLabel);
+
+        for (const t of items) {
+          const due = t.due?.toDate?.() || new Date(t.due);
+          const overdue = !t.done && due < now;
+
+          const row = document.createElement('div');
+          row.className = `grid grid-cols-1 md:grid-cols-3 gap-2 items-center border border-slate-200 rounded-2xl p-3 md:p-4 ${overdue ? 'bg-rose-50 border-rose-200' : 'bg-white'}`;
+
+          // Left: title/checkbox/meta
+          const left = document.createElement('div');
+          left.className = 'flex items-start gap-3';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.className = 'mt-1';
+          cb.checked = !!t.done;
+          cb.onchange = async () => {
+            await updateDoc(doc(db, 'tasks', t.id), { done: !t.done });
+          };
+          const leftText = document.createElement('div');
+          const title = document.createElement('div');
+          title.className = 'font-medium ' + (t.done ? 'line-through text-slate-400' : '');
+          title.textContent = t.title;
+          const meta = document.createElement('div');
+          meta.className = 'text-xs text-slate-500 flex items-center gap-2 mt-1';
+          meta.innerHTML = `<span>Due ${fmtDate(due)}</span>` +
+            (overdue ? `<span class="text-amber-800 bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5">Overdue</span>` : '') +
+            (t.remindedAt ? `<span class="text-slate-700 bg-slate-100 border border-slate-200 rounded-full px-2 py-0.5">Reminded</span>` : '');
+          leftText.appendChild(title); leftText.appendChild(meta);
+          left.appendChild(cb); left.appendChild(leftText);
+
+          // Middle: assignee
+          const mid = document.createElement('div');
+          mid.innerHTML = `
+            <div class="text-xs text-slate-500 mb-1">Assignee</div>
+            <select class="border rounded-2xl px-3 py-2 w-full">
+              <option value="unassigned">Unassigned</option>
+              <option value="Aliki">Aliki</option>
+              <option value="Christian">Christian</option>
+              <option value="Both">Both</option>
+            </select>
+            <div class="text-[10px] text-slate-500 mt-1">${t.assignee || 'Unassigned'}</div>
+          `;
+          const sel = mid.querySelector('select');
+          sel.value = t.assignee || 'unassigned';
+          sel.onchange = async (e) => {
+            const val = e.target.value === 'unassigned' ? '' : e.target.value;
+            await updateDoc(doc(db, 'tasks', t.id), { assignee: val });
+          };
+
+          // Right: actions
+          const right = document.createElement('div');
+          right.className = 'flex items-center gap-2 justify-end';
+          const btnEdit = document.createElement('button');
+          btnEdit.className = 'border rounded-2xl px-3 py-1.5';
+          btnEdit.textContent = '✏️';
+          btnEdit.title = 'Edit task';
+          btnEdit.onclick = () => openEditDialog(t);
+
+          const btnNotes = document.createElement('button');
+          btnNotes.className = 'border rounded-2xl px-3 py-1.5';
+          btnNotes.textContent = '🗒️';
+          btnNotes.title = 'Edit notes';
+          btnNotes.onclick = () => openEditDialog(t, true);
+
+          const btnRemind = document.createElement('button');
+          btnRemind.className = 'border rounded-2xl px-3 py-1.5';
+          btnRemind.textContent = '🔔';
+          btnRemind.title = 'Remind both';
+          btnRemind.onclick = async () => {
+            await updateDoc(doc(db, 'tasks', t.id), { remindedAt: new Date() });
+            alert(`Reminder flagged: ${t.title} (Due ${fmtDate(due)})`);
+          };
+
+          const btnDelete = document.createElement('button');
+          btnDelete.className = 'border rounded-2xl px-3 py-1.5';
+          btnDelete.textContent = '🗑️';
+          btnDelete.title = 'Delete';
+          btnDelete.onclick = async () => {
+            if (confirm('Delete this task?')) await deleteDoc(doc(db, 'tasks', t.id));
+          };
+
+          right.appendChild(btnEdit);
+          right.appendChild(btnNotes);
+          right.appendChild(btnRemind);
+          right.appendChild(btnDelete);
+
+          row.appendChild(left);
+          row.appendChild(mid);
+          row.appendChild(right);
+          list.appendChild(row);
+        }
+      }
+
+      $('btnToggleView').textContent = showOnlyCurrentAndNext ? 'Show whole month' : 'Show current+upcoming';
+      $('monthLabel').textContent = fmtMonth(monthCursor);
+    }
+
+    function openEditDialog(task, notesOnly = false) {
+      editingTaskId = task.id;
+      $('editTitle').value = task.title || '';
+      $('editDue').value = (task.due?.toDate?.() || new Date(task.due)).toISOString().slice(0,10);
+      $('editAssignee').value = task.assignee || 'unassigned';
+      $('editNotes').value = task.notes || '';
+      $('dlgEdit').showModal();
+      if (notesOnly) {
+        // focus notes if they clicked notes
+        setTimeout(() => { $('editNotes').focus(); }, 100);
+      }
+    }
+
+    // Initial UI
+    render();
+  </script>
+</body>
+</html>
